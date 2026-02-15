@@ -1,7 +1,8 @@
 version: "3.9"
 
 services:
-  postgres:
+# Prefect metadata database
+  prefect-postgres:
     image: postgres:14
     container_name: prefect-postgres
     environment:
@@ -19,13 +20,56 @@ services:
     networks:
       - prefect-network
 
-  redis:
-    image: redis:7
-    container_name: prefect-redis
+# Prefect Server (API + UI + Scheduler)
+  prefect-server:
+    image: prefecthq/prefect:3.6.16-python3.11
+    container_name: prefect-server
+    depends_on:
+      prefect-postgres:
+        condition: service_healthy
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-postgres:5432/prefect
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_API_URL: http://localhost:4200/api
+      PREFECT_ANALYTICS_ENABLED: "false"
+    command: prefect server start --host 0.0.0.0
+    ports:
+      - "4200:4200"
+    restart: unless-stopped
+    networks:
+      - prefect-network
+
+# Prefect Worker (process)
+  prefect-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prefect-worker
+    depends_on:
+      prefect-server:
+        condition: service_started
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+    env_file:
+      - .env
+    restart: on-failure
+    networks:
+      - prefect-network
+
+# Analytics / Lakehouse Postgres
+  analytics-postgres:
+    image: postgres:16
+    container_name: analytics-postgres
+    environment:
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics
+      POSTGRES_DB: analytics
+    ports:
+      - "5434:5432"
     volumes:
-      - redis_data:/data
+      - analytics_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping"]
+      test: ["CMD-SHELL", "pg_isready -U analytics -d analytics"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -33,77 +77,31 @@ services:
     networks:
       - prefect-network
 
-  prefect-server:
-    image: prefecthq/prefect:3.0.4-python3.11
-    container_name: prefect-server
+# Analytics DB migrations (init container)
+  analytics-migrations:
+    image: postgres:16
+    container_name: analytics-migrations
     depends_on:
-      postgres:
+      analytics-postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+    volumes:
+      - ./sql/migrations:/migrations
     environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
-      PREFECT_SERVER_API_HOST: 0.0.0.0
-      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
-      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
-      PREFECT_REDIS_MESSAGING_HOST: redis
-      PREFECT_REDIS_MESSAGING_PORT: 6379
-      PREFECT_REDIS_MESSAGING_DB: 0
-      PREFECT_API_URL: http://localhost:4200/api
-      PREFECT_ANALYTICS_ENABLED: "false"
-    command: prefect server start
-    ports:
-      - "4200:4200"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request as u; u.urlopen('http://localhost:4200/api/health', timeout=1)"
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    restart: unless-stopped
-    networks:
-      - prefect-network
-
-  prefect-services:
-    image: prefecthq/prefect:3.0.4-python3.11
-    container_name: prefect-services
-    depends_on:
-      prefect-server:
-        condition: service_healthy
-    environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
-      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
-      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
-      PREFECT_REDIS_MESSAGING_HOST: redis
-      PREFECT_REDIS_MESSAGING_PORT: 6379
-      PREFECT_REDIS_MESSAGING_DB: 0
-    command: prefect server services start
-    restart: unless-stopped
-    networks:
-      - prefect-network
-
-  prefect-worker:
-    image: prefecthq/prefect:3.0.4-python3.11
-    container_name: prefect-worker
-    depends_on:
-      prefect-server:
-        condition: service_healthy
-    environment:
-      PREFECT_API_URL: http://prefect-server:4200/api
-    command: prefect worker start --pool local-pool
-    restart: on-failure
+      PGPASSWORD: analytics
+    entrypoint: >
+      bash -c "
+      for file in /migrations/*.sql; do
+        echo Running migration: $$file;
+        psql -h analytics-postgres -U analytics -d analytics -f $$file;
+      done
+      "
+    restart: "no"
     networks:
       - prefect-network
 
 volumes:
   postgres_data:
-  redis_data:
+  analytics_postgres_data:
 
 networks:
   prefect-network:
