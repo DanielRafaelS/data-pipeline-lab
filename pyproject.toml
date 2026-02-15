@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "data-pipeline-lab"
+version = "0.1.0"
+description = "Medallion-based data pipeline using Python, PostgreSQL and Prefect."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+
+authors = [
+  { name = "Daniel Rafael" }
+]
+
+dependencies = [
+  "requests>=2.31.0",
+  "psycopg[binary]>=3.1.18",
+  "pydantic>=2.6.0",
+  "prefect>=3.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.1.0"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["etl*"]
+exclude = ["sql*", "tests*"]

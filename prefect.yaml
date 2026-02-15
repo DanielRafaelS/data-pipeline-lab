@@ -1,0 +1,23 @@
+name: data-pipeline-lab
+prefect-version: 3.6.16
+
+build: null
+push: null
+
+pull:
+- prefect.deployments.steps.set_working_directory:
+    directory: /app
+
+deployments:
+- name: medallion-etl-local
+  version: "1.0"
+  tags: ["local", "medallion"]
+  description: "Full medallion ETL pipeline (bronze -> silver -> gold)"
+  schedule: {}
+  flow_name: medallion-etl
+  entrypoint: etl/flow.py:etl_flow
+  parameters: {}
+  work_pool:
+    name: local-pool
+    work_queue_name: null
+    job_variables: {}
