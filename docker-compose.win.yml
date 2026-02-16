@@ -49,12 +49,13 @@ services:
       prefect-server:
         condition: service_started
     environment:
-      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_API_URL: http://localhost:4200/api
     env_file:
-      - .env.docker
+      - .env
     restart: on-failure
-    networks:
-      - prefect-network
+    network_mode: host
+    # networks:
+    #  - prefect-network
 
 # Analytics / Lakehouse Postgres
   analytics-postgres:
