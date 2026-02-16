@@ -171,3 +171,10 @@ Ou manualmente:
 ```bash
 docker compose -f docker-compose.win.yml down
 ```
+
+## 🔍 Validando os Dados (Analytics)
+
+Após a execução do pipeline, você pode validar os resultados e executar consultas analíticas diretamente no Data Warehouse.
+
+O arquivo `sql/analytics_examples.sql` contém exemplos de queries sobre o modelo dimensional (camada **Gold**), incluindo consultas na `fact_sales`, `dim_user`, `dim_product` e `dim_date`.
+
