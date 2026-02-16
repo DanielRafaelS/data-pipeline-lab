@@ -20,20 +20,20 @@ def _prepare_raw_records(
     prepared = []
     for record in records:
         natural_id = record[id_field]
-        payload = json.dumps(record)
+        payload = json.dumps(record, ensure_ascii=False)
         prepared.append((natural_id, payload))
 
     return prepared
 
 
-def _insert_raw(table: str, data: List[tuple]) -> None:
+def _insert_raw(table: str, id_column: str, data: List[tuple]) -> None:
     """
     Insert raw data with upsert to avoid duplicates.
     """
     query = f"""
-        INSERT INTO raw.{table} ( {table[:-1]}_id, payload )
+        INSERT INTO raw.{table} ({id_column}, payload)
         VALUES (%s, %s)
-        ON CONFLICT ({table[:-1]}_id)
+        ON CONFLICT ({id_column})
         DO UPDATE SET
             payload = EXCLUDED.payload,
             ingested_at = NOW();
@@ -42,13 +42,13 @@ def _insert_raw(table: str, data: List[tuple]) -> None:
     execute_many(query, data)
 
 # Public functions
-
 def load_products_raw() -> int:
     client = FakeStoreClient()
     records = client.get_products()
 
     prepared = _prepare_raw_records(records, "id")
-    _insert_raw("products", prepared)
+    _insert_raw("products", "product_id", prepared)
+
 
     return len(prepared)
 
@@ -58,7 +58,7 @@ def load_users_raw() -> int:
     records = client.get_users()
 
     prepared = _prepare_raw_records(records, "id")
-    _insert_raw("users", prepared)
+    _insert_raw("users", "user_id", prepared)
 
     return len(prepared)
 
@@ -68,6 +68,6 @@ def load_carts_raw() -> int:
     records = client.get_carts()
 
     prepared = _prepare_raw_records(records, "id")
-    _insert_raw("carts", prepared)
+    _insert_raw("carts", "cart_id", prepared)
 
     return len(prepared)
