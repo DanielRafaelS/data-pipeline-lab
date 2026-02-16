@@ -51,7 +51,7 @@ services:
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
     env_file:
-      - .env
+      - .env.docker
     restart: on-failure
     networks:
       - prefect-network

@@ -11,7 +11,6 @@ help:
 	@echo "  make deploy   -> Deploy Prefect flow"
 	@echo "  make run      -> Run deployed flow"
 	@echo "  make logs     -> Tail logs"
-	@echo "  make test     -> Run tests"
 
 up:
 	docker compose -f docker-compose.win.yml up -d
@@ -34,6 +33,3 @@ run:
 
 logs:
 	docker compose -f docker-compose.win.yml logs -f
-
-test:
-	pytest
