@@ -13,7 +13,9 @@ deployments:
   version: "1.0"
   tags: ["local", "medallion"]
   description: "Full medallion ETL pipeline (bronze -> silver -> gold)"
-  schedule: {}
+  schedule:
+    cron: "0 */2 * * *"
+    timezone: "America/Sao_Paulo"
   flow_name: medallion-etl
   entrypoint: etl/flow.py:etl_flow
   parameters: {}

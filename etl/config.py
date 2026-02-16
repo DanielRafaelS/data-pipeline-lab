@@ -1,8 +1,12 @@
 import os
+
+from pathlib import Path
 from typing import Literal
 from functools import lru_cache
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings
+
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -33,7 +37,7 @@ class Settings(BaseSettings):
     log_level: str = Field("INFO", alias="LOG_LEVEL")
 
     class Config:
-        env_file = f".env.{os.getenv('ENVIRONMENT', 'local')}"
+        env_file = BASE_DIR / ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"
 
