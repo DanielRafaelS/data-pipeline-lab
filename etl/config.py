@@ -1,3 +1,4 @@
+import os
 from typing import Literal
 from functools import lru_cache
 from pydantic import Field, ValidationError
@@ -7,12 +8,13 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """
     Application configuration loaded from environment variables.
-
-    Values are validated on startup.
     """
+
     # Project
     project_name: str = Field(..., alias="PROJECT_NAME")
-    environment: Literal["local", "dev", "prod"] = Field("local", alias="ENVIRONMENT")
+    environment: Literal["local", "docker", "prod"] = Field(
+        "local", alias="ENVIRONMENT"
+    )
 
     # Data Warehouse
     dw_host: str = Field(..., alias="DW_HOST")
@@ -26,23 +28,18 @@ class Settings(BaseSettings):
     api_timeout_seconds: int = Field(30, alias="API_TIMEOUT_SECONDS")
 
     # Pipeline
-
     load_mode: Literal["full", "incremental"] = Field("full", alias="LOAD_MODE")
     batch_size: int = Field(500, alias="BATCH_SIZE")
     log_level: str = Field("INFO", alias="LOG_LEVEL")
 
     class Config:
-        env_file = ".env"
+        env_file = f".env.{os.getenv('ENVIRONMENT', 'local')}"
         env_file_encoding = "utf-8"
         extra = "ignore"
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """
-    Cached settings loader.
-    Ensures environment variables are read once.
-    """
     try:
         return Settings()
     except ValidationError as e:

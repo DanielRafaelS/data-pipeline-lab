@@ -3,7 +3,6 @@ from typing import List, Tuple
 
 from etl.db import fetch_all, execute_many
 
-
 # DIM USER
 def load_dim_user() -> int:
     rows = fetch_all("""
@@ -76,18 +75,29 @@ def load_dim_product() -> int:
 
 # DIM DATE
 def load_dim_date() -> int:
+    """
+    Loads distinct cart dates from silver layer into gold.dim_date.
+
+    Enriches calendar attributes:
+    - year
+    - month
+    - day
+    - month_name
+    - quarter
+
+    Idempotent load (ON CONFLICT DO NOTHING).
+    """
+
     rows = fetch_all("""
         SELECT DISTINCT cart_date
         FROM silver.carts
+        WHERE cart_date IS NOT NULL
     """)
 
     prepared: List[Tuple] = []
 
     for row in rows:
         date_value = row["cart_date"]
-        if date_value is None:
-            continue
-
         dt = datetime.strptime(str(date_value), "%Y-%m-%d")
 
         prepared.append(
@@ -96,48 +106,72 @@ def load_dim_date() -> int:
                 dt.year,
                 dt.month,
                 dt.day,
+                dt.strftime("%B"),                 # month_name
+                (dt.month - 1) // 3 + 1,           # quarter
             )
         )
 
     query = """
         INSERT INTO gold.dim_date (
-            date_key, year, month, day
+            date_key,
+            year,
+            month,
+            day,
+            month_name,
+            quarter
         )
-        VALUES (%s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (date_key)
         DO NOTHING;
     """
 
-    execute_many(query, prepared)
+    if prepared:
+        execute_many(query, prepared)
+
     return len(prepared)
+
 
 # FACT SALES
 def load_fact_sales() -> int:
+    """
+    Loads fact_sales table from silver layer.
+
+    Grain:
+        1 row per (user, product, date)
+
+    Calculates:
+        total_amount = quantity * unit_price
+
+    Idempotent load using ON CONFLICT.
+    """
+
     rows = fetch_all("""
         SELECT
-            c.cart_id,
             c.user_id,
-            c.cart_date,
             ci.product_id,
+            c.cart_date,
             ci.quantity,
             p.price
         FROM silver.carts c
         JOIN silver.cart_items ci ON c.cart_id = ci.cart_id
         JOIN silver.products p ON ci.product_id = p.product_id
+        WHERE c.cart_date IS NOT NULL
     """)
 
     prepared = []
 
     for row in rows:
-        total_amount = row["quantity"] * row["price"]
+        quantity = row["quantity"]
+        unit_price = row["price"]
+        total_amount = quantity * unit_price
 
         prepared.append(
             (
                 row["user_id"],
                 row["product_id"],
                 row["cart_date"],
-                row["quantity"],
-                row["price"],
+                quantity,
+                unit_price,
                 total_amount,
             )
         )
@@ -161,7 +195,13 @@ def load_fact_sales() -> int:
         FROM gold.dim_user u
         JOIN gold.dim_product p
             ON p.product_id = %s
-        WHERE u.user_id = %s;
+        WHERE u.user_id = %s
+        ON CONFLICT (user_key, product_key, date_key)
+        DO UPDATE SET
+            quantity = EXCLUDED.quantity,
+            unit_price = EXCLUDED.unit_price,
+            total_amount = EXCLUDED.total_amount,
+            created_at = gold.fact_sales.created_at;
     """
 
     final_prepared = [
@@ -176,5 +216,7 @@ def load_fact_sales() -> int:
         for row in prepared
     ]
 
-    execute_many(query, final_prepared)
+    if final_prepared:
+        execute_many(query, final_prepared)
+
     return len(final_prepared)
